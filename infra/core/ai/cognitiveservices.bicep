@@ -17,7 +17,7 @@ resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   kind: kind
   properties: {
     customSubDomainName: customSubDomainName
-    publicNetworkAccess: publicNetworkAccess
+    publicNetworkAccess: publicNetworkAccess    
   }
   sku: sku
 }

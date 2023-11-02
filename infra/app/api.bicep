@@ -11,8 +11,8 @@ param keyVaultName string
 param serviceName string = 'api'
 param storageAccountName string
 
-module api '../core/host/functions.bicep' = {
-  name: '${serviceName}-functions-dotnet-isolated-module'
+module functionapp '../core/host/functions.bicep' = {
+  name: '${serviceName}-function'
   params: {
     name: name
     location: location
@@ -39,6 +39,6 @@ resource storage 'Microsoft.Storage/storageAccounts@2021-09-01' existing = {
   name: storageAccountName
 }
 
-output SERVICE_PRINCIPAL_ID string = api.outputs.identityPrincipalId
-output SERVICE_API_NAME string = api.outputs.name
-output SERVICE_API_URI string = api.outputs.uri
+output SERVICE_PRINCIPAL_ID string = functionapp.outputs.identityPrincipalId
+output SERVICE_API_NAME string = functionapp.outputs.name
+output SERVICE_API_URI string = functionapp.outputs.uri

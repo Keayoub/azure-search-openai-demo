@@ -7,8 +7,8 @@ param appServicePlanId string
 param appSettings object = {}
 param allowedOrigins array = []
 
-module web '../core/host/appservice.bicep' = {
-  name: 'web'
+module webApp '../core/host/appservice.bicep' = {
+  name: '${serviceName}-webApp'
   params: {
     name: !empty(name) ? name : '${serviceName}-staticwebapp-module'
     location: location
@@ -24,6 +24,6 @@ module web '../core/host/appservice.bicep' = {
   }
 }
 
-output SERVICE_WEB_NAME string = web.outputs.name
-output uri string = web.outputs.uri
-output identityPrincipalId string = web.outputs.identityPrincipalId
+output SERVICE_WEB_NAME string = webApp.outputs.name
+output uri string = webApp.outputs.uri
+output identityPrincipalId string = webApp.outputs.identityPrincipalId
