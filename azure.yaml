@@ -24,18 +24,18 @@ services:
     project: ./app/api
     language: py
     host: function
-hooks:
+    hooks:
       prepackage:
-      windows:
-        shell: pwsh
+        windows:
+          shell: pwsh
           run: pip install -r requirements.txt
-        interactive: true
-        continueOnError: false
-      posix:
-        shell: sh
-        run: pipinstall-rrequirements.txt
-        interactive: true
-        continueOnError: false
+          interactive: true
+          continueOnError: false
+        posix:
+          shell: sh
+          run: pipinstall-rrequirements.txt
+          interactive: true
+          continueOnError: false
 # hooks:
 #     postprovision:
 #       windows:
