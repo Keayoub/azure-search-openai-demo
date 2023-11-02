@@ -13,6 +13,11 @@ param appServicePlanName string = ''
 param backendServiceName string = ''
 param resourceGroupName string = ''
 
+//FunctionAppparams
+paramfunctionAppNamestring=''
+paramkeyVaultNamestring=''
+paramlogAnalyticsNamestring=''
+paramapplicationInsightsDashboardNamestring=''
 param applicationInsightsName string = ''
 
 param searchServiceName string = ''
@@ -114,7 +119,9 @@ module monitoring './core/monitor/monitoring.bicep' = if (useApplicationInsights
   params: {
     location: location
     tags: tags
+    logAnalyticsName: !empty(logAnalyticsName) ? logAnalyticsName : '${abbrs.operationalInsightsWorkspaces}${resourceToken}'
     applicationInsightsName: !empty(applicationInsightsName) ? applicationInsightsName : '${abbrs.insightsComponents}${resourceToken}'
+    applicationInsightsDashboardName: !empty(applicationInsightsDashboardName) ? applicationInsightsDashboardName : '${abbrs.portalDashboards}${resourceToken}'
   }
 }
 
@@ -135,19 +142,14 @@ module appServicePlan 'core/host/appserviceplan.bicep' = {
 }
 
 // The application frontend
-module backend 'core/host/appservice.bicep' = {
+module backend 'app/web.bicep' = {
   name: 'web'
   scope: resourceGroup
   params: {
     name: !empty(backendServiceName) ? backendServiceName : '${abbrs.webSitesAppService}backend-${resourceToken}'
     location: location
-    tags: union(tags, { 'azd-service-name': 'backend' })
+    tags: tags
     appServicePlanId: appServicePlan.outputs.id
-    runtimeName: 'python'
-    runtimeVersion: '3.11'
-    appCommandLine: 'python3 -m gunicorn main:app'
-    scmDoBuildDuringDeployment: true
-    managedIdentity: true
     allowedOrigins: [allowedOrigin]
     appSettings: {
       AZURE_STORAGE_ACCOUNT: storage.outputs.name
@@ -176,6 +178,49 @@ module backend 'core/host/appservice.bicep' = {
       AZURE_TENANT_ID: tenant().tenantId
       // CORS support, for frontends on other hosts
       ALLOWED_ORIGIN: allowedOrigin
+    }
+  }
+}
+
+// the function app api
+module api 'app/api.bicep' = {
+  name: 'api'
+  scope: resourceGroup
+  params: {
+    name: !empty(functionAppName) ? functionAppName : '${abbrs.webSitesFunctions}api-${resourceToken}'
+    tags: tags
+    applicationInsightsName:  useApplicationInsights ? monitoring.outputs.applicationInsightsName : ''
+    appServicePlanId: appServicePlan.outputs.id
+    location: location
+    keyVaultName: keyVault.outputs.name
+    storageAccountName: storage.outputs.name
+    allowedOrigins: [ backend.outputs.uri ]
+    appSettings: {      
+      AZURE_STORAGE_ACCOUNT: storage.outputs.name
+      AZURE_STORAGE_CONTAINER: storageContainerName
+      BlobStorageConnection__blobServiceUri: storage.outputs.primaryEndpoints.blob
+      BlobStorageConnection__queueServiceUri: storage.outputs.primaryEndpoints.queue
+      AZURE_SEARCH_INDEX: searchIndexName
+      AZURE_SEARCH_SERVICE: searchService.outputs.name
+      APPLICATIONINSIGHTS_CONNECTION_STRING: useApplicationInsights ? monitoring.outputs.applicationInsightsConnectionString : ''
+      // Shared by all OpenAI deployments
+      OPENAI_HOST: openAiHost
+      AZURE_OPENAI_EMB_MODEL_NAME: embeddingModelName
+      AZURE_OPENAI_CHATGPT_MODEL: chatGptModelName
+      // Specific to Azure OpenAI
+      AZURE_OPENAI_SERVICE: openAiHost == 'azure' ? openAi.outputs.name : ''
+      AZURE_OPENAI_CHATGPT_DEPLOYMENT: chatGptDeploymentName
+      AZURE_OPENAI_EMB_DEPLOYMENT: embeddingDeploymentName
+      // Used only with non-Azure OpenAI deployments
+      OPENAI_API_KEY: openAiApiKey
+      OPENAI_ORGANIZATION: openAiApiOrganization
+      // Optional login and document level access control system
+      AZURE_USE_AUTHENTICATION: useAuthentication
+      AZURE_SERVER_APP_ID: serverAppId
+      AZURE_SERVER_APP_SECRET: serverAppSecret
+      AZURE_CLIENT_APP_ID: clientAppId
+      AZURE_TENANT_ID: tenant().tenantId
+      AZURE_FORMRECOGNIZER_SERVICE:formRecognizer.outputs.name
     }
   }
 }
@@ -273,54 +318,79 @@ module storage 'core/storage/storage-account.bicep' = {
   }
 }
 
-// USER ROLES
-module openAiRoleUser 'core/security/role.bicep' = if (openAiHost == 'azure') {
+module openAiRoleUser 'core/security/role.bicep' = {
   scope: openAiResourceGroup
   name: 'openai-role-user'
   params: {
-    principalId: principalId
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
     roleDefinitionId: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
-    principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
+// Give the API access to KeyVault
+module apiKeyVaultAccess './core/security/keyvault-access.bicep' = {
+  scope: resourceGroup
+  name: 'api-keyvault-access'
+  params: {
+    keyVaultName: keyVault.outputs.name
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
+  }
+}
+
+// give the API access to Form Recognizer
 module formRecognizerRoleUser 'core/security/role.bicep' = {
   scope: formRecognizerResourceGroup
   name: 'formrecognizer-role-user'
   params: {
-    principalId: principalId
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
     roleDefinitionId: 'a97b65f3-24c7-4388-baec-2e87135dc908'
-    principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
+// give the API access to storage
+// Storage Queue Data Contributor to use Managed Identity with function app
 module storageRoleUser 'core/security/role.bicep' = {
   scope: storageResourceGroup
-  name: 'storage-role-user'
+  name: 'storage-queuerole-user'
   params: {
-    principalId: principalId
-    roleDefinitionId: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
-    principalType: 'User'
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
+    roleDefinitionId: '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
+    principalType: 'ServicePrincipal'
   }
 }
 
+// Storage Blob Data Owner to use Managed Identity with function app
+module storageDataOwner 'core/security/role.bicep' = {
+  scope: storageResourceGroup
+  name: 'storage-data-owner'
+  params: {
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
+    roleDefinitionId: 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Storage Account Contributor to use Managed Identity with function app
 module storageContribRoleUser 'core/security/role.bicep' = {
   scope: storageResourceGroup
   name: 'storage-contribrole-user'
   params: {
-    principalId: principalId
-    roleDefinitionId: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-    principalType: 'User'
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
+    roleDefinitionId: '17d1049b-9a84-46fb-8f53-869881c3d3ab'
+    principalType: 'ServicePrincipal'
   }
 }
 
+// give the API access to Search
 module searchRoleUser 'core/security/role.bicep' = {
   scope: searchServiceResourceGroup
   name: 'search-role-user'
   params: {
-    principalId: principalId
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
     roleDefinitionId: '1407120a-92aa-4202-b7e9-c0e197c71c8f'
-    principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -328,9 +398,9 @@ module searchContribRoleUser 'core/security/role.bicep' = {
   scope: searchServiceResourceGroup
   name: 'search-contrib-role-user'
   params: {
-    principalId: principalId
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
     roleDefinitionId: '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
-    principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -338,9 +408,41 @@ module searchSvcContribRoleUser 'core/security/role.bicep' = {
   scope: searchServiceResourceGroup
   name: 'search-svccontrib-role-user'
   params: {
-    principalId: principalId
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
     roleDefinitionId: '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
-    principalType: 'User'
+    principalType: 'ServicePrincipal'
+  }
+}
+module searchRoleAPI 'core/security/role.bicep' = {
+  scope: searchServiceResourceGroup
+  name: 'search-role-api'
+  params: {
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
+    roleDefinitionId: '1407120a-92aa-4202-b7e9-c0e197c71c8f'
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// SYSTEM IDENTITIES OPEN AI FOR API
+module openAiRoleAPI 'core/security/role.bicep' = {
+  scope: openAiResourceGroup
+  name: 'openai-role-api'
+  params: {
+    principalId: api.outputs.SERVICE_PRINCIPAL_ID
+    roleDefinitionId: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Store secrets in a keyvault
+module keyVault 'core/security/keyvault.bicep' = {
+  name: 'keyvault'
+  scope: resourceGroup
+  params: {
+    name: !empty(keyVaultName) ? keyVaultName : '${abbrs.keyVaultVaults}${resourceToken}'
+    location: location
+    tags: tags
+    principalId: principalId
   }
 }
 
@@ -404,3 +506,4 @@ output AZURE_STORAGE_CONTAINER string = storageContainerName
 output AZURE_STORAGE_RESOURCE_GROUP string = storageResourceGroup.name
 
 output BACKEND_URI string = backend.outputs.uri
+output AZURE_FUNCTIONAPP_NAME string = api.outputs.SERVICE_API_NAME

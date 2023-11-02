@@ -1,0 +1,8 @@
+azure-functions
+azure-identity
+azure-storage-blob
+azure-search-documents==11.4.0b6
+azure-ai-formrecognizer
+openai[datalib]
+pypdf
+tenacity
