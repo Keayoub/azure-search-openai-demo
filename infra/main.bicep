@@ -14,17 +14,35 @@ param backendServiceName string = ''
 param resourceGroupName string = ''
 
 //FunctionAppparams
-paramfunctionAppNamestring=''
-paramkeyVaultNamestring=''
-paramlogAnalyticsNamestring=''
-paramapplicationInsightsDashboardNamestring=''
+param functionAppName string = ''
+param keyVaultName string = ''
+param logAnalyticsName string = ''
+param applicationInsightsDashboardName string = ''
 param applicationInsightsName string = ''
+
+
+@description('The pricing tier for the App Service plan')
+@allowed([
+  'F1'
+  'D1'
+  'B1'
+  'B2'
+  'B3'
+  'S1'
+  'S2'
+  'S3'
+  'P1'
+  'P2'
+  'P3'
+  'P4'
+])
+param HostingPlanSku string = 'B3'
 
 param searchServiceName string = ''
 param searchServiceResourceGroupName string = ''
 param searchServiceLocation string = ''
 // The free tier does not support managed identity (required) or semantic search (optional)
-@allowed(['basic', 'standard', 'standard2', 'standard3', 'storage_optimized_l1', 'storage_optimized_l2'])
+@allowed([ 'basic', 'standard', 'standard2', 'standard3', 'storage_optimized_l1', 'storage_optimized_l2' ])
 param searchServiceSkuName string // Set in main.parameters.json
 param searchIndexName string // Set in main.parameters.json
 param searchQueryLanguage string // Set in main.parameters.json
@@ -36,22 +54,20 @@ param storageResourceGroupLocation string = location
 param storageContainerName string = 'content'
 param storageSkuName string // Set in main.parameters.json
 
-@allowed(['azure', 'openai'])
+@allowed([ 'azure', 'openai' ])
 param openAiHost string // Set in main.parameters.json
 
 param openAiServiceName string = ''
 param openAiResourceGroupName string = ''
 @description('Location for the OpenAI resource group')
-@allowed(['canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus'])
+@allowed([ 'canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus' ])
 @metadata({
   azd: {
     type: 'location'
   }
 })
-param openAiResourceGroupLocation string
-
+param openAiResourceGroupLocation string = location
 param openAiSkuName string = 'S0'
-
 param openAiApiKey string = ''
 param openAiApiOrganization string = ''
 
@@ -134,7 +150,7 @@ module appServicePlan 'core/host/appserviceplan.bicep' = {
     location: location
     tags: tags
     sku: {
-      name: 'B1'
+      name: HostingPlanSku
       capacity: 1
     }
     kind: 'linux'
@@ -150,7 +166,7 @@ module backend 'app/web.bicep' = {
     location: location
     tags: tags
     appServicePlanId: appServicePlan.outputs.id
-    allowedOrigins: [allowedOrigin]
+    allowedOrigins: [ allowedOrigin ]
     appSettings: {
       AZURE_STORAGE_ACCOUNT: storage.outputs.name
       AZURE_STORAGE_CONTAINER: storageContainerName
@@ -189,13 +205,13 @@ module api 'app/api.bicep' = {
   params: {
     name: !empty(functionAppName) ? functionAppName : '${abbrs.webSitesFunctions}api-${resourceToken}'
     tags: tags
-    applicationInsightsName:  useApplicationInsights ? monitoring.outputs.applicationInsightsName : ''
+    applicationInsightsName: useApplicationInsights ? monitoring.outputs.applicationInsightsName : ''
     appServicePlanId: appServicePlan.outputs.id
     location: location
     keyVaultName: keyVault.outputs.name
     storageAccountName: storage.outputs.name
     allowedOrigins: [ backend.outputs.uri ]
-    appSettings: {      
+    appSettings: {
       AZURE_STORAGE_ACCOUNT: storage.outputs.name
       AZURE_STORAGE_CONTAINER: storageContainerName
       BlobStorageConnection__blobServiceUri: storage.outputs.primaryEndpoints.blob
@@ -220,7 +236,7 @@ module api 'app/api.bicep' = {
       AZURE_SERVER_APP_SECRET: serverAppSecret
       AZURE_CLIENT_APP_ID: clientAppId
       AZURE_TENANT_ID: tenant().tenantId
-      AZURE_FORMRECOGNIZER_SERVICE:formRecognizer.outputs.name
+      AZURE_FORMRECOGNIZER_SERVICE: formRecognizer.outputs.name
     }
   }
 }
