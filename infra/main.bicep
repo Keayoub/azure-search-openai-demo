@@ -60,7 +60,7 @@ param openAiHost string // Set in main.parameters.json
 param openAiServiceName string = ''
 param openAiResourceGroupName string = ''
 @description('Location for the OpenAI resource group')
-@allowed([ 'canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus' ])
+@allowed(['canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus', 'australiaeast', 'swedencentral'])
 @metadata({
   azd: {
     type: 'location'
@@ -271,7 +271,10 @@ module openAi 'core/ai/cognitiveservices.bicep' = if (openAiHost == 'azure') {
           name: embeddingModelName
           version: '2'
         }
-        capacity: embeddingDeploymentCapacity
+        sku: {
+          name: 'Standard'
+          capacity: embeddingDeploymentCapacity
+        }
       }
     ]
   }
@@ -317,6 +320,7 @@ module storage 'core/storage/storage-account.bicep' = {
     name: !empty(storageAccountName) ? storageAccountName : '${abbrs.storageStorageAccounts}${resourceToken}'
     location: storageResourceGroupLocation
     tags: tags
+    allowBlobPublicAccess: false
     publicNetworkAccess: 'Enabled'
     sku: {
       name: storageSkuName
