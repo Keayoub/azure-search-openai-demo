@@ -37,5 +37,11 @@
     "azureFunctions.projectLanguage": "Python",
     "azureFunctions.projectRuntime": "~4",
     "debug.internalConsoleOptions": "neverOpen",
-    "azureFunctions.projectLanguageModel": 2
+    "azureFunctions.projectLanguageModel": 2,
+    "terminal.integrated.env.windows": {
+        "PATH": "C:\\Users\\aykeba\\.azurelogicapps\\dependencies\\DotNetSDK;${env:PATH}"
+    },
+    "omnisharp.dotNetCliPaths": [
+        "C:\\Users\\aykeba\\.azurelogicapps\\dependencies\\DotNetSDK"
+    ]
 }

@@ -48,6 +48,12 @@ param searchIndexName string // Set in main.parameters.json
 param searchQueryLanguage string // Set in main.parameters.json
 param searchQuerySpeller string // Set in main.parameters.json
 
+// network params
+param vnetSubscriptionId string = subscription().id
+param vnetResourceGroupName string = ''
+param vnetName string = ''
+param storageSubnetName string = ''
+
 param storageAccountName string = ''
 param storageResourceGroupName string = ''
 param storageResourceGroupLocation string = location
@@ -321,7 +327,11 @@ module storage 'core/storage/storage-account.bicep' = {
     location: storageResourceGroupLocation
     tags: tags
     allowBlobPublicAccess: false
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
+    vnetSubscriptionId: !empty(vnetSubscriptionId) ? vnetSubscriptionId : subscription().id
+    vnetResourceGroupName: !empty(vnetResourceGroupName) ? vnetResourceGroupName : resourceGroup.name
+    vnetName: !empty(vnetName) ? vnetName : '${abbrs.networkVirtualNetworks}${resourceToken}'
+    subnetName:!empty(storageSubnetName) ? storageSubnetName : 'storage${resourceToken}'
     sku: {
       name: storageSkuName
     }
@@ -335,6 +345,22 @@ module storage 'core/storage/storage-account.bicep' = {
         publicAccess: 'None'
       }
     ]
+  }
+}
+
+// Pve storage blob storage  data
+module pveStoragedata 'core/network/private-endpoint.bicep' = {
+  name: 'pveStoragedata'
+  scope: resourceGroup
+  params: {
+   vnetSubscriptionId: !empty(vnetSubscriptionId) ? vnetSubscriptionId : subscription().id
+    vnetResourceGroupName: !empty(vnetResourceGroupName) ? vnetResourceGroupName : resourceGroup.name
+    vnetName: storage.outputs.vnet.name
+    subnetName:storage.outputs.subnet.name
+    pvename: 'pve-st-${storage.outputs.name}'
+    linkservice: storage.outputs.storageid
+    Servicegroupid: 'blob'
+    location: location
   }
 }
 
